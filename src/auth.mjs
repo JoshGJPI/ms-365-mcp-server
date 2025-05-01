@@ -13,7 +13,7 @@ const FALLBACK_PATH = path.join(FALLBACK_DIR, '..', '.token-cache.json');
 
 const DEFAULT_CONFIG = {
   auth: {
-    clientId: '084a3e9f-a9f4-43f7-89f9-d229cf97853e',
+    clientId: process.env.MS365_CLIENT_ID,
     authority: 'https://login.microsoftonline.com/common',
   },
 };
