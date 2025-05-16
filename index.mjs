@@ -27,6 +27,34 @@ import logger from './src/logger.mjs';
 import AuthManager from './src/auth.mjs';
 import MicrosoftGraphServer from './src/server.mjs';
 import { version } from './src/version.mjs';
+import { TARGET_ENDPOINTS } from './src/dynamic-tools.mjs';
+
+// Function to build scopes from endpoints (moved from auth.mjs)
+export function buildScopesFromEndpoints() {
+  const scopesSet = new Set();
+  const SCOPE_HIERARCHY = {
+    'Mail.ReadWrite': ['Mail.Read', 'Mail.Send'],
+    'Calendars.ReadWrite': ['Calendars.Read'],
+    'Files.ReadWrite': ['Files.Read'],
+    'Tasks.ReadWrite': ['Tasks.Read'],
+    'Contacts.ReadWrite': ['Contacts.Read'],
+  };
+
+  TARGET_ENDPOINTS.forEach((endpoint) => {
+    if (endpoint.scopes && Array.isArray(endpoint.scopes)) {
+      endpoint.scopes.forEach((scope) => scopesSet.add(scope));
+    }
+  });
+
+  Object.entries(SCOPE_HIERARCHY).forEach(([higherScope, lowerScopes]) => {
+    if (lowerScopes.every((scope) => scopesSet.has(scope))) {
+      lowerScopes.forEach((scope) => scopesSet.delete(scope));
+      scopesSet.add(higherScope);
+    }
+  });
+
+  return Array.from(scopesSet);
+}
 
 // Troubleshooting function to check environment and clear tokens
 async function troubleshootLogin() {
@@ -116,7 +144,26 @@ async function main() {
       process.exit(0);
     }
 
-    const authManager = new AuthManager();
+    // Create auth configuration
+    const authConfig = {
+      auth: {
+        clientId: process.env.MS365_CLIENT_ID,
+        authority: 'https://login.microsoftonline.com/common',
+      },
+    };
+    
+    // Validate required configuration
+    if (!authConfig.auth.clientId) {
+      const errorMsg = 'MS365_CLIENT_ID environment variable is not set or is empty';
+      logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    // Build scopes from endpoints
+    const scopes = buildScopesFromEndpoints();
+    
+    // Create the auth manager with explicit config
+    const authManager = new AuthManager(authConfig, scopes);
     await authManager.loadTokenCache();
 
     if (args.login) {

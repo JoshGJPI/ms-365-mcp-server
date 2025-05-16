@@ -4,49 +4,16 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
 import logger from './logger.mjs';
-import { TARGET_ENDPOINTS } from './dynamic-tools.mjs';
+import { buildScopesFromEndpoints } from '../index.mjs';
 
 const SERVICE_NAME = 'ms-365-mcp-server';
 const TOKEN_CACHE_ACCOUNT = 'msal-token-cache';
 const FALLBACK_DIR = path.dirname(fileURLToPath(import.meta.url));
 const FALLBACK_PATH = path.join(FALLBACK_DIR, '..', '.ms365-token-cache.json');
 
-const DEFAULT_CONFIG = {
-  auth: {
-    clientId: process.env.MS365_CLIENT_ID,
-    authority: 'https://login.microsoftonline.com/common',
-  },
-};
-
-const SCOPE_HIERARCHY = {
-  'Mail.ReadWrite': ['Mail.Read', 'Mail.Send'],
-  'Calendars.ReadWrite': ['Calendars.Read'],
-  'Files.ReadWrite': ['Files.Read'],
-  'Tasks.ReadWrite': ['Tasks.Read'],
-  'Contacts.ReadWrite': ['Contacts.Read'],
-};
-
-function buildScopesFromEndpoints() {
-  const scopesSet = new Set();
-
-  TARGET_ENDPOINTS.forEach((endpoint) => {
-    if (endpoint.scopes && Array.isArray(endpoint.scopes)) {
-      endpoint.scopes.forEach((scope) => scopesSet.add(scope));
-    }
-  });
-
-  Object.entries(SCOPE_HIERARCHY).forEach(([higherScope, lowerScopes]) => {
-    if (lowerScopes.every((scope) => scopesSet.has(scope))) {
-      lowerScopes.forEach((scope) => scopesSet.delete(scope));
-      scopesSet.add(higherScope);
-    }
-  });
-
-  return Array.from(scopesSet);
-}
-
 class AuthManager {
-  constructor(config = DEFAULT_CONFIG, scopes = buildScopesFromEndpoints()) {
+  constructor(config, scopes = buildScopesFromEndpoints()) {
+    logger.info(`Initializing AuthManager with client ID: ${config.auth.clientId}`);
     logger.info(`And scopes are ${scopes.join(', ')}`, scopes);
     this.config = config;
     this.scopes = scopes;
@@ -148,14 +115,28 @@ class AuthManager {
       logger.warn(`Error during pre-login cleanup: ${logoutError.message}`);
     }
     
+    // Log the configuration for debugging
+    logger.info('MSAL Authentication Configuration:');
+    logger.info(`Client ID: ${this.config.auth.clientId}`);
+    logger.info(`Authority: ${this.config.auth.authority}`);
+    logger.info(`Scopes: ${this.scopes.join(', ')}`);
+    
+    // Try with a simplified scope set for debugging
+    const reducedScopes = ['User.Read'];
+    logger.info(`Attempting with reduced scopes: ${reducedScopes.join(', ')}`);
+    
     const deviceCodeRequest = {
-      scopes: this.scopes,
+      scopes: reducedScopes, // Just try with minimal scopes
       deviceCodeCallback: (response) => {
-        const text = ['\n', response.message, '\n'].join('');
+        logger.info(`Device code details: ${JSON.stringify(response)}`);
+        
+        // Forward the complete device code response to the user
         if (hack) {
-          hack(text + 'After login run the "ms365-verify-login" command');
+          hack('Microsoft login required:\n\n' + 
+               `${response.message}\n\n` +
+               'After completing authentication in your browser, run the "ms365-verify-login" command');
         } else {
-          console.log(text);
+          console.log(response.message);
         }
         logger.info('Device code login initiated');
       },
@@ -163,9 +144,6 @@ class AuthManager {
 
     try {
       logger.info('Requesting device code...');
-      logger.info(`Using client ID: ${this.config.auth.clientId}`);
-      logger.info(`Using scopes: ${this.scopes.join(', ')}`);
-      
       const response = await this.msalApp.acquireTokenByDeviceCode(deviceCodeRequest);
       logger.info('Device code login successful');
       this.accessToken = response.accessToken;
@@ -174,11 +152,30 @@ class AuthManager {
       return this.accessToken;
     } catch (error) {
       logger.error(`Error in device code flow: ${error.message}`);
-      // If we get an invalid_grant error, it could be due to token issues
-      if (error.errorCode === 'post_request_failed' && error.errorMessage.includes('invalid_grant')) {
-        logger.error('Invalid grant error detected - this typically means an issue with the authorization flow.');
-        logger.error('Please check if the Microsoft 365 app registration is correctly configured.');
+      
+      // Log extended error details
+      if (error.errorCode) {
+        logger.error(`Error details: ${JSON.stringify({
+          errorCode: error.errorCode,
+          errorMessage: error.errorMessage,
+          subError: error.subError || 'none',
+          correlationId: error.correlationId || 'none'
+        })}`);
       }
+      
+      // Check if it's a client ID issue
+      if (error.errorCode === 'invalid_client') {
+        logger.error('Invalid client ID - check your Azure AD app registration');
+      }
+      // Check if it's a scope issue
+      else if (error.errorMessage && error.errorMessage.includes('scope')) {
+        logger.error('Scope issue detected - the app might not have the requested permissions');
+      }
+      // Check if it's a network issue
+      else if (error.errorCode === 'network_error') {
+        logger.error('Network error detected - check your internet connection and firewall');
+      }
+      
       throw error;
     }
   }
