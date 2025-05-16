@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export function registerAuthTools(server, authManager) {
   server.tool(
-    'login',
+    'ms365-login',
     {
       force: z.boolean().default(false).describe('Force a new login even if already logged in'),
     },
@@ -49,7 +49,7 @@ export function registerAuthTools(server, authManager) {
     }
   );
 
-  server.tool('logout', {}, async () => {
+  server.tool('ms365-logout', {}, async () => {
     try {
       await authManager.logout();
       return {
@@ -72,7 +72,7 @@ export function registerAuthTools(server, authManager) {
     }
   });
 
-  server.tool('verify-login', {}, async () => {
+  server.tool('ms365-verify-login', {}, async () => {
     const testResult = await authManager.testLogin();
 
     return {

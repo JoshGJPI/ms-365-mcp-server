@@ -9,7 +9,7 @@ import { TARGET_ENDPOINTS } from './dynamic-tools.mjs';
 const SERVICE_NAME = 'ms-365-mcp-server';
 const TOKEN_CACHE_ACCOUNT = 'msal-token-cache';
 const FALLBACK_DIR = path.dirname(fileURLToPath(import.meta.url));
-const FALLBACK_PATH = path.join(FALLBACK_DIR, '..', '.token-cache.json');
+const FALLBACK_PATH = path.join(FALLBACK_DIR, '..', '.ms365-token-cache.json');
 
 const DEFAULT_CONFIG = {
   auth: {
