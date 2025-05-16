@@ -63,6 +63,7 @@ class AuthManager {
         const cachedData = await keytar.getPassword(SERVICE_NAME, TOKEN_CACHE_ACCOUNT);
         if (cachedData) {
           cacheData = cachedData;
+          logger.info('Found token in system keychain');
         }
       } catch (keytarError) {
         logger.warn(`Keychain access failed, falling back to file storage: ${keytarError.message}`);
@@ -70,13 +71,29 @@ class AuthManager {
 
       if (!cacheData && fs.existsSync(FALLBACK_PATH)) {
         cacheData = fs.readFileSync(FALLBACK_PATH, 'utf8');
+        logger.info('Found token in fallback file storage');
       }
 
       if (cacheData) {
         this.msalApp.getTokenCache().deserialize(cacheData);
+        logger.info('Successfully loaded token cache');
+      } else {
+        logger.info('No existing token cache found, starting fresh');
       }
     } catch (error) {
       logger.error(`Error loading token cache: ${error.message}`);
+      // Clear any existing token cache to prevent corrupted data
+      try {
+        await keytar.deletePassword(SERVICE_NAME, TOKEN_CACHE_ACCOUNT);
+        logger.info('Cleared system keychain token due to load error');
+      } catch (e) {}
+      
+      if (fs.existsSync(FALLBACK_PATH)) {
+        try {
+          fs.unlinkSync(FALLBACK_PATH);
+          logger.info('Cleared fallback token file due to load error');
+        } catch (e) {}
+      }
     }
   }
 
@@ -123,12 +140,20 @@ class AuthManager {
   }
 
   async acquireTokenByDeviceCode(hack) {
+    // First clear any existing tokens to ensure a fresh start
+    try {
+      await this.logout();
+      logger.info('Cleared existing tokens for fresh login');
+    } catch (logoutError) {
+      logger.warn(`Error during pre-login cleanup: ${logoutError.message}`);
+    }
+    
     const deviceCodeRequest = {
       scopes: this.scopes,
       deviceCodeCallback: (response) => {
         const text = ['\n', response.message, '\n'].join('');
         if (hack) {
-          hack(text + 'After login run the "verify login" command');
+          hack(text + 'After login run the "ms365-verify-login" command');
         } else {
           console.log(text);
         }
@@ -138,6 +163,9 @@ class AuthManager {
 
     try {
       logger.info('Requesting device code...');
+      logger.info(`Using client ID: ${this.config.auth.clientId}`);
+      logger.info(`Using scopes: ${this.scopes.join(', ')}`);
+      
       const response = await this.msalApp.acquireTokenByDeviceCode(deviceCodeRequest);
       logger.info('Device code login successful');
       this.accessToken = response.accessToken;
@@ -146,6 +174,11 @@ class AuthManager {
       return this.accessToken;
     } catch (error) {
       logger.error(`Error in device code flow: ${error.message}`);
+      // If we get an invalid_grant error, it could be due to token issues
+      if (error.errorCode === 'post_request_failed' && error.errorMessage.includes('invalid_grant')) {
+        logger.error('Invalid grant error detected - this typically means an issue with the authorization flow.');
+        logger.error('Please check if the Microsoft 365 app registration is correctly configured.');
+      }
       throw error;
     }
   }

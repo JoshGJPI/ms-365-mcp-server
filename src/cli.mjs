@@ -15,9 +15,10 @@ program
   .description('Microsoft 365 MCP Server')
   .version(version)
   .option('-v', 'Enable verbose logging')
-  .option('--login', 'Login using device code flow')
-  .option('--logout', 'Log out and clear saved credentials')
-  .option('--verify-login', 'Verify login without starting the server');
+  .option('--login', 'Login to Microsoft 365 using device code flow')
+  .option('--logout', 'Log out from Microsoft 365 and clear saved credentials')
+  .option('--verify-login', 'Verify Microsoft 365 login without starting the server')
+  .option('--troubleshoot', 'Run login troubleshooting and cleanup');
 
 export function parseArgs() {
   program.parse();

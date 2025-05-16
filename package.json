@@ -14,8 +14,9 @@
     "format": "prettier --write \"**/*.{js,mjs,json,md}\"",
     "release": "node bin/release.mjs",
     "download-openapi": "node bin/download-openapi.mjs",
+    "manual-download": "node bin/manual-download.mjs",
     "inspect": "npx @modelcontextprotocol/inspector node index.mjs",
-    "postinstall": "npm run download-openapi"
+    "postinstall": "npm run download-openapi || npm run manual-download"
   },
   "keywords": [
     "microsoft",
@@ -32,6 +33,7 @@
     "@azure/msal-node": "^2.1.0",
     "@modelcontextprotocol/sdk": "^1.8.0",
     "commander": "^11.1.0",
+    "dotenv": "^16.0.3",
     "js-yaml": "^4.1.0",
     "keytar": "^7.9.0",
     "winston": "^3.17.0",
